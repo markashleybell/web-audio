@@ -1,0 +1,14 @@
+{
+    "name": "drum-machine",
+    "version": "1.0.0",
+    "license": "MIT",
+    "devDependencies": {
+        "tslint": "^5.9.1",
+        "typescript": "^2.8.3"
+    },
+    "scripts": {
+        "serve": "python -m http.server",
+        "build": "node ./node_modules/typescript/lib/tsc",
+        "watch": "node ./node_modules/typescript/lib/tsc -w"
+    }
+}
