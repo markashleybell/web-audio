@@ -5,127 +5,108 @@ declare const AUDIO_CONTEXT: AudioContext;
 
 const RENDERING_CONTEXT = (document.getElementById('screen') as HTMLCanvasElement).getContext('2d');
 
-const BUTTON_SIZE = 39;
+const BUTTON_SIZE = 32;
 
-const STEP_COUNT = 8;
-const TEMPO = 300; // Bigger number is slower tempo, weirdly...
+const STEP_COUNT = 16;
+const TEMPO = 140; // Bigger number is slower tempo, weirdly...
 
 const SEQUENCER_STATE: ISequencerState = {
     step: 0,
     tracks: [
         createTrack('gold', note(AUDIO_CONTEXT, 880)),
-        createTrack('gold', note(AUDIO_CONTEXT, 659)),
-        createTrack('gold', note(AUDIO_CONTEXT, 587)),
-        createTrack('gold', note(AUDIO_CONTEXT, 523)),
-        createTrack('gold', note(AUDIO_CONTEXT, 440)),
-        createTrack('dodgerblue', kick(AUDIO_CONTEXT))
+        createTrack('red', note(AUDIO_CONTEXT, 659)),
+        createTrack('green', note(AUDIO_CONTEXT, 587)),
+        createTrack('orange', note(AUDIO_CONTEXT, 523)),
+        createTrack('blue', note(AUDIO_CONTEXT, 440)),
+        createTrack('black', kick(AUDIO_CONTEXT))
     ],
     paused: true
 };
 
-function nextStep(sequencerState: ISequencerState) {
-    if (sequencerState.paused) {
-        return;
-    }
-
+function incrementStep(sequencerState: ISequencerState) {
     // Increment step, looping back to first if the current step was the last
     sequencerState.step = (sequencerState.step + 1) % STEP_COUNT;
+    return sequencerState.step;
+}
 
+function nextStep(sequencerState: ISequencerState) {
+    if (sequencerState.paused) { return; }
+    const step = incrementStep(sequencerState);
     sequencerState.tracks
-        .filter(track => track.steps[sequencerState.step])
+        .filter(track => track.steps[step])
         .forEach(track => track.playSound());
 }
 
-function draw(sequencerState: ISequencerState) {
-    // Clear away the previous drawing.
-    RENDERING_CONTEXT.clearRect(0, 0, RENDERING_CONTEXT.canvas.width, RENDERING_CONTEXT.canvas.height);
-    drawTracks(RENDERING_CONTEXT, sequencerState);
-
-    // Draw the pink square that indicates the current step (beat).
-    drawButton(RENDERING_CONTEXT, sequencerState.step, sequencerState.tracks.length, 'deeppink');
-
-    // Ask the browser to call `draw()` again in the near future.
-    requestAnimationFrame(() => draw(sequencerState));
+function draw(renderingContext: CanvasRenderingContext2D, sequencerState: ISequencerState) {
+    renderingContext.clearRect(0, 0, renderingContext.canvas.width, renderingContext.canvas.height);
+    drawTracks(renderingContext, sequencerState);
+    // Draw the current step indicator
+    drawButton(renderingContext, sequencerState.step, sequencerState.tracks.length, 'deeppink');
+    requestAnimationFrame(() => draw(renderingContext, sequencerState));
 }
 
 function note(audioContext: AudioContext, frequency: number) {
     return () => {
         const duration = 1;
-
         // Create the basic note as a sine wave.  A sine wave produces a
         // pure tone.  Set it to play for `duration` seconds.
         const sineWave = createSineWave(audioContext, duration);
-
         // Set the note's frequency to `frequency`.  A greater frequency
         // produces a higher note.
         sineWave.frequency.value = frequency;
-
         // Web audio works by connecting nodes together in chains.  The
         // output of one node becomes the input to the next.  In this way,
         // sound is created and modified.
         chain([
-
             // `sineWave` outputs a pure tone.
             sineWave,
-
             // An amplifier reduces the volume of the tone from 20% to 0
             // over the duration of the tone.  This produces an echoey
             // effect.
             createAmplifier(audioContext, 0.2, duration),
-
             // The amplified output is sent to the browser to be played
             // aloud.
-            audioContext.destination]);
+            audioContext.destination
+        ]);
     };
 }
 
 function kick(audioContext: AudioContext) {
     return () => {
-    const duration = 2;
-
-    // Create the basic note as a sine wave.  A sine wave produces a
-    // pure tone.  Set it to play for `duration` seconds.
-    const sineWave = createSineWave(audioContext, duration);
-
-    // Set the initial frequency of the drum at a low `160`.  Reduce
-    // it to 0 over the duration of the sound.  This produces that
-    // BBBBBBBoooooo..... drop effect.
-    rampDown(audioContext, sineWave.frequency, 160, duration);
-
-    // Web audio works by connecting nodes together in chains.  The
-    // output of one node becomes the input to the next.  In this way,
-    // sound is created and modified.
-    chain([
-
-        // `sineWave` outputs a pure tone.
-        sineWave,
-
-        // An amplifier reduces the volume of the tone from 40% to 0
-        // over the duration of the tone.  This produces an echoey
-        // effect.
-        createAmplifier(audioContext, 0.4, duration),
-
-        // The amplified output is sent to the browser to be played
-        // aloud.
-        audioContext.destination]);
+        const duration = 2;
+        // Create the basic note as a sine wave.  A sine wave produces a
+        // pure tone.  Set it to play for `duration` seconds.
+        const sineWave = createSineWave(audioContext, duration);
+        // Set the initial frequency of the drum at a low `160`.  Reduce
+        // it to 0 over the duration of the sound.  This produces that
+        // BBBBBBBoooooo..... drop effect.
+        rampDown(audioContext, sineWave.frequency, 160, duration);
+        // Web audio works by connecting nodes together in chains.  The
+        // output of one node becomes the input to the next. In this way,
+        // sound is created and modified.
+        chain([
+            // `sineWave` outputs a pure tone.
+            sineWave,
+            // An amplifier reduces the volume of the tone from 40% to 0
+            // over the duration of the tone.  This produces an echoey
+            // effect.
+            createAmplifier(audioContext, 0.4, duration),
+            // The amplified output is sent to the browser to be played
+            audioContext.destination
+        ]);
     };
 }
 
 function createSineWave(audioContext: AudioContext, duration: number) {
-
     // Create an oscillating sound wave.
     const oscillator = audioContext.createOscillator();
-
     // Make the oscillator a sine wave.  Different types of wave produce
     // different characters of sound.  A sine wave produces a pure tone.
     oscillator.type = 'sine';
-
     // Start the sine wave playing right now.
     oscillator.start(audioContext.currentTime);
-
     // Tell the sine wave to stop playing after `duration` seconds have passed.
     oscillator.stop(audioContext.currentTime + duration);
-
     return oscillator;
 }
 
@@ -176,10 +157,7 @@ function drawButton(renderingContext: CanvasRenderingContext2D, column: number, 
 function drawTracks(renderingContext: CanvasRenderingContext2D, data: ISequencerState) {
     data.tracks.forEach((track, row) => {
         track.steps.forEach((on, column) => {
-            drawButton(renderingContext,
-                column,
-                row,
-                on ? track.color : 'lightgray');
+            drawButton(renderingContext, column, row, on ? track.color : 'lightgray');
         });
     });
 }
@@ -208,7 +186,6 @@ RENDERING_CONTEXT.canvas.addEventListener('click', e => {
     SEQUENCER_STATE.tracks.forEach((track, row) => {
         track.steps.forEach((on, column) => {
             const buttonPoint = getButtonPosition(column, row);
-            // ...If the mouse pointer was inside this button...
             if (pointWithinButton(mousePosition, buttonPoint)) {
                 track.steps[column] = !on;
             }
@@ -216,5 +193,11 @@ RENDERING_CONTEXT.canvas.addEventListener('click', e => {
     });
 });
 
-draw(SEQUENCER_STATE);
+// 'Program in' a basic 4/4 beat
+SEQUENCER_STATE.tracks[5].steps[0] = true;
+SEQUENCER_STATE.tracks[5].steps[4] = true;
+SEQUENCER_STATE.tracks[5].steps[8] = true;
+SEQUENCER_STATE.tracks[5].steps[12] = true;
+
+draw(RENDERING_CONTEXT, SEQUENCER_STATE);
 setInterval(() => nextStep(SEQUENCER_STATE), TEMPO);
