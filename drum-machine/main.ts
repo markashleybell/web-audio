@@ -56,26 +56,26 @@ function decaySine(
         if (effect) {
             effect(audioContext, sineWaveOscillator);
         }
-        const decayAmplifier = createAmplifier(audioContext, (ctx, amp) => rampDown(ctx, amp.gain, volume, duration));
+        const decay = audioContext.createGain();
+        rampDown(audioContext, decay.gain, volume, duration);
         // Connect the nodes to the output
-        chain([
-            sineWaveOscillator,
-            decayAmplifier,
-            audioContext.destination
-        ]);
+        chain([sineWaveOscillator, decay, audioContext.destination]);
     };
 }
 
 function note(audioContext: AudioContext, frequency: number) {
-    return decaySine(audioContext, frequency, 0.2, 1);
+    const duration = 1;
+    const volume = 0.2;
+    return decaySine(audioContext, frequency, volume, duration);
 }
 
 function kick(audioContext: AudioContext) {
     const frequency = 160;
+    const volume = 0.4;
     const duration = 4;
     const effect = (ctx: AudioContext, osc: OscillatorNode) =>
         rampDown(ctx, osc.frequency, frequency, duration);
-    return decaySine(audioContext, frequency, 0.4, duration, effect);
+    return decaySine(audioContext, frequency, volume, duration, effect);
 }
 
 function createSineWaveOscillator(audioContext: AudioContext, frequency: number, duration: number) {
@@ -92,12 +92,6 @@ function rampDown(audioContext: AudioContext, parameter: AudioParam, startValue:
     const currentTime = audioContext.currentTime;
     parameter.setValueAtTime(startValue, currentTime);
     parameter.exponentialRampToValueAtTime(0.01, currentTime + duration);
-}
-
-function createAmplifier(audioContext: AudioContext, effect: (audioContext: AudioContext, amplifier: GainNode) => void) {
-    const amplifier = audioContext.createGain();
-    effect(audioContext, amplifier);
-    return amplifier;
 }
 
 function chain(soundNodes: AudioNode[]) {
