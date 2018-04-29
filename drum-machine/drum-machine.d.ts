@@ -10,7 +10,8 @@ interface ISequencerTrack {
 }
 
 interface ISequencerState {
-    step: number;
+    stepCount: number;
     tracks: ISequencerTrack[];
+    currentStep: number;
     paused: boolean;
 }

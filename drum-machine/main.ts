@@ -1,7 +1,10 @@
 // Original JS source from https://github.com/maryrosecook/drum-machine
 // Annotated JS source here: http://drum-machine.maryrosecook.com/docs/drum-machine.html
 
+// This variable is initialised in audio-context.js
 declare const AUDIO_CONTEXT: AudioContext;
+
+// Global constants
 
 const RENDERING_CONTEXT = (document.getElementById('screen') as HTMLCanvasElement).getContext('2d');
 
@@ -11,39 +14,20 @@ const STEP_COUNT = 16;
 const TEMPO = 140; // Bigger number is slower tempo, weirdly...
 
 const SEQUENCER_STATE: ISequencerState = {
-    step: 0,
+    stepCount: STEP_COUNT,
     tracks: [
-        createTrack('gold', note(AUDIO_CONTEXT, 880)),
-        createTrack('red', note(AUDIO_CONTEXT, 659)),
-        createTrack('green', note(AUDIO_CONTEXT, 587)),
-        createTrack('orange', note(AUDIO_CONTEXT, 523)),
-        createTrack('deeppink', note(AUDIO_CONTEXT, 440)),
-        createTrack('blue', kick(AUDIO_CONTEXT))
+        createTrack(STEP_COUNT, 'gold', note(AUDIO_CONTEXT, 880)),
+        createTrack(STEP_COUNT, 'red', note(AUDIO_CONTEXT, 659)),
+        createTrack(STEP_COUNT, 'green', note(AUDIO_CONTEXT, 587)),
+        createTrack(STEP_COUNT, 'orange', note(AUDIO_CONTEXT, 523)),
+        createTrack(STEP_COUNT, 'deeppink', note(AUDIO_CONTEXT, 440)),
+        createTrack(STEP_COUNT, 'blue', kick(AUDIO_CONTEXT))
     ],
+    currentStep: 0,
     paused: true
 };
 
-function incrementStep(sequencerState: ISequencerState) {
-    // Increment step, looping back to first if the current step was the last
-    sequencerState.step = (sequencerState.step + 1) % STEP_COUNT;
-    return sequencerState.step;
-}
-
-function nextStep(sequencerState: ISequencerState) {
-    if (sequencerState.paused) { return; }
-    const step = incrementStep(sequencerState);
-    sequencerState.tracks
-        .filter(track => track.steps[step])
-        .forEach(track => track.playSound());
-}
-
-function draw(renderingContext: CanvasRenderingContext2D, sequencerState: ISequencerState) {
-    renderingContext.clearRect(0, 0, renderingContext.canvas.width, renderingContext.canvas.height);
-    drawTracks(renderingContext, sequencerState);
-    // Draw the current step indicator
-    drawButton(renderingContext, sequencerState.step, sequencerState.tracks.length, 'black');
-    requestAnimationFrame(() => draw(renderingContext, sequencerState));
-}
+// Audio functions
 
 function decaySine(
     audioContext: AudioContext,
@@ -100,13 +84,46 @@ function chain(soundNodes: AudioNode[]) {
     }
 }
 
-function createTrack(color: string | CanvasGradient | CanvasPattern, playSound: () => void) {
+// Sequencing functions
+
+function incrementStep(sequencerState: ISequencerState) {
+    // Increment step, looping back to first if the current step was the last
+    sequencerState.currentStep = (sequencerState.currentStep + 1) % sequencerState.stepCount;
+    return sequencerState.currentStep;
+}
+
+function nextStep(sequencerState: ISequencerState) {
+    if (sequencerState.paused) { return; }
+    const step = incrementStep(sequencerState);
+    sequencerState.tracks
+        .filter(track => track.steps[step])
+        .forEach(track => track.playSound());
+}
+
+function createTrack(stepCount: number, color: string | CanvasGradient | CanvasPattern, playSound: () => void) {
     return {
-        steps: new Array(STEP_COUNT).fill(false),
+        steps: new Array(stepCount).fill(false),
         color: color,
         playSound: playSound
     } as ISequencerTrack;
 }
+
+function clear(sequencerState: ISequencerState) {
+    sequencerState.tracks.forEach(track => track.steps = track.steps.map(() => false));
+}
+
+function toggleStep(sequencerState: ISequencerState, clickPosition: IPoint) {
+    sequencerState.tracks.forEach((track, row) => {
+        track.steps.forEach((on, column) => {
+            const buttonPosition = getButtonPosition(column, row);
+            if (withinButton(buttonPosition, clickPosition)) {
+                track.steps[column] = !on;
+            }
+        });
+    });
+}
+
+// Graphics functions
 
 function getButtonPosition(column: number, row: number) {
     return {
@@ -129,26 +146,19 @@ function drawTracks(renderingContext: CanvasRenderingContext2D, data: ISequencer
     });
 }
 
-function pointWithinButton(point: IPoint, buttonPoint: IPoint) {
-    return !(point.x < buttonPoint.x ||
-             point.y < buttonPoint.y ||
-             point.x > buttonPoint.x + BUTTON_SIZE ||
-             point.y > buttonPoint.y + BUTTON_SIZE);
+function withinButton(buttonPosition: IPoint, position: IPoint) {
+    return !(position.x < buttonPosition.x ||
+             position.y < buttonPosition.y ||
+             position.x > buttonPosition.x + BUTTON_SIZE ||
+             position.y > buttonPosition.y + BUTTON_SIZE);
 }
 
-function clear(sequencerState: ISequencerState) {
-    sequencerState.tracks.forEach(track => track.steps = track.steps.map(() => false));
-}
-
-function toggleStep(sequencerState: ISequencerState, mousePosition: IPoint) {
-    sequencerState.tracks.forEach((track, row) => {
-        track.steps.forEach((on, column) => {
-            const buttonPoint = getButtonPosition(column, row);
-            if (pointWithinButton(mousePosition, buttonPoint)) {
-                track.steps[column] = !on;
-            }
-        });
-    });
+function draw(renderingContext: CanvasRenderingContext2D, sequencerState: ISequencerState) {
+    renderingContext.clearRect(0, 0, renderingContext.canvas.width, renderingContext.canvas.height);
+    drawTracks(renderingContext, sequencerState);
+    // Draw the current step indicator
+    drawButton(renderingContext, sequencerState.currentStep, sequencerState.tracks.length, 'black');
+    requestAnimationFrame(() => draw(renderingContext, sequencerState));
 }
 
 RENDERING_CONTEXT.canvas.addEventListener('click', e => {
