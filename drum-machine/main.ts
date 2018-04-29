@@ -17,8 +17,8 @@ const SEQUENCER_STATE: ISequencerState = {
         createTrack('red', note(AUDIO_CONTEXT, 659)),
         createTrack('green', note(AUDIO_CONTEXT, 587)),
         createTrack('orange', note(AUDIO_CONTEXT, 523)),
-        createTrack('blue', note(AUDIO_CONTEXT, 440)),
-        createTrack('black', kick(AUDIO_CONTEXT))
+        createTrack('deeppink', note(AUDIO_CONTEXT, 440)),
+        createTrack('blue', kick(AUDIO_CONTEXT))
     ],
     paused: true
 };
@@ -41,89 +41,62 @@ function draw(renderingContext: CanvasRenderingContext2D, sequencerState: ISeque
     renderingContext.clearRect(0, 0, renderingContext.canvas.width, renderingContext.canvas.height);
     drawTracks(renderingContext, sequencerState);
     // Draw the current step indicator
-    drawButton(renderingContext, sequencerState.step, sequencerState.tracks.length, 'deeppink');
+    drawButton(renderingContext, sequencerState.step, sequencerState.tracks.length, 'black');
     requestAnimationFrame(() => draw(renderingContext, sequencerState));
 }
 
-function note(audioContext: AudioContext, frequency: number) {
+function decaySine(
+    audioContext: AudioContext,
+    frequency: number,
+    volume: number,
+    duration: number,
+    effect?: (audioContext: AudioContext, oscillator: OscillatorNode) => void) {
     return () => {
-        const duration = 1;
-        // Create the basic note as a sine wave.  A sine wave produces a
-        // pure tone.  Set it to play for `duration` seconds.
-        const sineWave = createSineWave(audioContext, duration);
-        // Set the note's frequency to `frequency`.  A greater frequency
-        // produces a higher note.
-        sineWave.frequency.value = frequency;
-        // Web audio works by connecting nodes together in chains.  The
-        // output of one node becomes the input to the next.  In this way,
-        // sound is created and modified.
+        const sineWaveOscillator = createSineWaveOscillator(audioContext, frequency, duration);
+        if (effect) {
+            effect(audioContext, sineWaveOscillator);
+        }
+        const decayAmplifier = createAmplifier(audioContext, (ctx, amp) => rampDown(ctx, amp.gain, volume, duration));
+        // Connect the nodes to the output
         chain([
-            // `sineWave` outputs a pure tone.
-            sineWave,
-            // An amplifier reduces the volume of the tone from 20% to 0
-            // over the duration of the tone.  This produces an echoey
-            // effect.
-            createAmplifier(audioContext, 0.2, duration),
-            // The amplified output is sent to the browser to be played
-            // aloud.
+            sineWaveOscillator,
+            decayAmplifier,
             audioContext.destination
         ]);
     };
+}
+
+function note(audioContext: AudioContext, frequency: number) {
+    return decaySine(audioContext, frequency, 0.2, 1);
 }
 
 function kick(audioContext: AudioContext) {
-    return () => {
-        const duration = 2;
-        // Create the basic note as a sine wave.  A sine wave produces a
-        // pure tone.  Set it to play for `duration` seconds.
-        const sineWave = createSineWave(audioContext, duration);
-        // Set the initial frequency of the drum at a low `160`.  Reduce
-        // it to 0 over the duration of the sound.  This produces that
-        // BBBBBBBoooooo..... drop effect.
-        rampDown(audioContext, sineWave.frequency, 160, duration);
-        // Web audio works by connecting nodes together in chains.  The
-        // output of one node becomes the input to the next. In this way,
-        // sound is created and modified.
-        chain([
-            // `sineWave` outputs a pure tone.
-            sineWave,
-            // An amplifier reduces the volume of the tone from 40% to 0
-            // over the duration of the tone.  This produces an echoey
-            // effect.
-            createAmplifier(audioContext, 0.4, duration),
-            // The amplified output is sent to the browser to be played
-            audioContext.destination
-        ]);
-    };
+    const frequency = 160;
+    const duration = 4;
+    const effect = (ctx: AudioContext, osc: OscillatorNode) =>
+        rampDown(ctx, osc.frequency, frequency, duration);
+    return decaySine(audioContext, frequency, 0.4, duration, effect);
 }
 
-function createSineWave(audioContext: AudioContext, duration: number) {
-    // Create an oscillating sound wave.
+function createSineWaveOscillator(audioContext: AudioContext, frequency: number, duration: number) {
     const oscillator = audioContext.createOscillator();
-    // Make the oscillator a sine wave.  Different types of wave produce
-    // different characters of sound.  A sine wave produces a pure tone.
     oscillator.type = 'sine';
-    // Start the sine wave playing right now.
-    oscillator.start(audioContext.currentTime);
-    // Tell the sine wave to stop playing after `duration` seconds have passed.
-    oscillator.stop(audioContext.currentTime + duration);
+    oscillator.frequency.value = frequency;
+    const currentTime = audioContext.currentTime;
+    oscillator.start(currentTime);
+    oscillator.stop(currentTime + duration);
     return oscillator;
 }
 
-// **rampDown()** takes `value`, sets it to `startValue` and reduces
-// it to almost `0` in `duration` seconds.  `value` might be the
-// volume or frequency of a sound.
-function rampDown(audioContext: AudioContext, value: AudioParam, startValue: number, duration: number) {
-    value.setValueAtTime(startValue, audioContext.currentTime);
-    value.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+function rampDown(audioContext: AudioContext, parameter: AudioParam, startValue: number, duration: number) {
+    const currentTime = audioContext.currentTime;
+    parameter.setValueAtTime(startValue, currentTime);
+    parameter.exponentialRampToValueAtTime(0.01, currentTime + duration);
 }
 
-// **createAmplifier()** returns a sound node that controls the volume
-// of the sound entering it.  The volume is started at `startValue`
-// and ramped down in `duration` seconds to almost `0`.
-function createAmplifier(audioContext: AudioContext, startValue: number, duration: number) {
+function createAmplifier(audioContext: AudioContext, effect: (audioContext: AudioContext, amplifier: GainNode) => void) {
     const amplifier = audioContext.createGain();
-    rampDown(audioContext, amplifier.gain, startValue, duration);
+    effect(audioContext, amplifier);
     return amplifier;
 }
 
@@ -173,8 +146,19 @@ function clear(sequencerState: ISequencerState) {
     sequencerState.tracks.forEach(track => track.steps = track.steps.map(() => false));
 }
 
+function toggleStep(sequencerState: ISequencerState, mousePosition: IPoint) {
+    sequencerState.tracks.forEach((track, row) => {
+        track.steps.forEach((on, column) => {
+            const buttonPoint = getButtonPosition(column, row);
+            if (pointWithinButton(mousePosition, buttonPoint)) {
+                track.steps[column] = !on;
+            }
+        });
+    });
+}
+
 RENDERING_CONTEXT.canvas.addEventListener('click', e => {
-    // Get the coordinates of the mouse pointer relative to the canvas
+    // Coordinates are relative to the canvas
     const mousePosition: IPoint = { x: e.offsetX, y: e.offsetY };
 
     // If we're off the bottom of the track listing, they tapped the play bar, so pause/unpause
@@ -183,14 +167,7 @@ RENDERING_CONTEXT.canvas.addEventListener('click', e => {
         return;
     }
 
-    SEQUENCER_STATE.tracks.forEach((track, row) => {
-        track.steps.forEach((on, column) => {
-            const buttonPoint = getButtonPosition(column, row);
-            if (pointWithinButton(mousePosition, buttonPoint)) {
-                track.steps[column] = !on;
-            }
-        });
-    });
+    toggleStep(SEQUENCER_STATE, mousePosition);
 });
 
 // 'Program in' a basic 4/4 beat
